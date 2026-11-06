@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block title %}Overview{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* Header: title on the left, small actions on the right */
+  .overview-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px 24px;
+    max-width: 1000px;
+    margin: 0 auto 24px;
+  }
+  .overview-header .page__header { margin: 0; }
+  .overview-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .overview-actions .btn { padding: 6px 12px; font-size: 13px; }
+
+  /* Three balances, centered, side by side */
+  .balances {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+    align-items: stretch;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  .balance { display: flex; flex-direction: column; gap: 6px; }
+  .balance__label { font-size: 16px; font-weight: 600; color: var(--type-primary); }
+  .balance__amt {
+    margin-top: auto;
+    padding-top: 16px;
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--type-primary);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+  .balance__amt.is-negative { color: var(--alert); }
+  .balance .tag { margin-left: 8px; vertical-align: middle; }
+
+  /* Overspend limit bar — full width rectangle beneath the balance boxes */
+  .overspend {
+    max-width: 1000px;
+    margin: 20px auto 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+  .overspend__info { display: flex; flex-direction: column; gap: 6px; }
+  .overspend__label { font-size: 16px; font-weight: 600; color: var(--type-primary); }
+  .overspend__figure {
+    margin: 0;
+    font-size: 25px;
+    font-weight: 700;
+    color: var(--type-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (max-width: 900px) {
+    .balances { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 480px) {
+    .balance__amt { font-size: 28px; }
+    .overspend { flex-direction: column; align-items: flex-start; }
+  }
+
+  /* Monthly cost chart — full width rectangle beneath the overspend bar */
+  .spend-chart {
+    max-width: 1000px;
+    margin: 20px auto 0;
+  }
+  .spend-chart__title { font-size: 16px; font-weight: 600; color: var(--type-primary); }
+  .spend-chart__wrap { margin-top: 16px; }
+  .spend-chart canvas { width: 100%; height: 280px; display: block; }
+  .spend-chart__empty { font-size: 14px; color: var(--type-secondary); padding: 24px 0; text-align: center; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="overview-header">
+  <div class="page__header">
+    <h1 class="page__title">Overview</h1>
+    <p class="page__description">Updates as requests are approved, reimbursed, and paid out.</p>
+  </div>
+  <div class="overview-actions">
+    <a class="btn btn--primary" href="{% url 'bal-set' organization_slug=current_org.slug %}">Reconciliation</a>
+    <a class="btn btn--primary" href="{% url 'bal-adjustment' organization_slug=current_org.slug %}">Deposits &amp; Corrections</a>
+    <a class="btn btn--primary" href="{% url 'request-list' organization_slug=current_org.slug %}">All requests</a>
+  </div>
+</div>
+
+<div class="balances">
+
+  <section class="card balance" aria-labelledby="true-title">
+    <h2 class="balance__label" id="true-title">True balance</h2>
+    <p class="balance__amt{% if true_balance < 0 %} is-negative{% endif %}">{% if true_balance < 0 %}-${{ true_balance|floatformat:2|cut:"-" }}{% else %}${{ true_balance|floatformat:2 }}{% endif %}</p>
+  </section>
+
+  <section class="card balance" aria-labelledby="committed-title">
+    <h2 class="balance__label" id="committed-title">Committed</h2>
+    <p class="balance__amt">${{ curr_approved|floatformat:2 }}</p>
+  </section>
+
+  <section class="card balance" aria-labelledby="working-title">
+    <h2 class="balance__label" id="working-title">Working balance{% if working_balance < 0 %}<span class="tag tag--alert">Overcommitted</span>{% endif %}</h2>
+    <p class="balance__amt{% if working_balance < 0 %} is-negative{% endif %}">{% if working_balance < 0 %}-${{ working_balance|floatformat:2|cut:"-" }}{% else %}${{ working_balance|floatformat:2 }}{% endif %}</p>
+  </section>
+
+</div>
+
+<section class="card overspend" aria-labelledby="overspend-title">
+  <div class="overspend__info">
+    <h2 class="overspend__label" id="overspend-title">Overspend limit</h2>
+    <p class="overspend__figure">${{ current_org.overspend_limit|floatformat:2 }}</p>
+  </div>
+  <a class="btn btn--secondary" href="{% url 'overspend-adjust' organization_slug=current_org.slug %}">Change the overspend limit</a>
+</section>
+
+<section class="card spend-chart" aria-labelledby="spend-chart-title">
+  <h2 class="spend-chart__title" id="spend-chart-title">Monthly Spending</h2>
+  <div class="spend-chart__wrap">
+    {% if monthly_spending %}
+      <canvas id="spend-chart-canvas" role="img" aria-label="Bar chart of monthly request costs with a trend line"></canvas>
+    {% else %}
+      <p class="spend-chart__empty">No request activity yet.</p>
+    {% endif %}
+  </div>
+</section>
+{{ monthly_spending|json_script:"monthly-spending-data" }}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const dataEl = document.getElementById('monthly-spending-data');
+  const canvas = document.getElementById('spend-chart-canvas');
+  if (!dataEl || !canvas) return;
+
+  // Expected shape, built server-side from r.cost and r.created_at grouped by month:
+  // [{"month": "Jan 2026", "total": 540.00}, {"month": "Feb 2026", "total": 210.50}, ...]
+  const data = JSON.parse(dataEl.textContent);
+  if (!Array.isArray(data) || data.length === 0) return;
+
+  const styles = getComputedStyle(document.documentElement);
+  const barColor = styles.getPropertyValue('--chart-bar').trim();
+  const lineColor = styles.getPropertyValue('--chart-line').trim();
+  const pointColor = styles.getPropertyValue('--chart-point').trim();
+  const gridColor = styles.getPropertyValue('--chart-grid').trim();
+  const glow = styles.getPropertyValue('--chart-glow').trim();
+  const textColor = styles.getPropertyValue('--type-secondary').trim();
+
+  let hoverIndex = -1;
+  let lastPoints = [];
+
+  function draw() {
+    const dpr = window.devicePixelRatio || 1;
+    const cssWidth = canvas.clientWidth;
+    const cssHeight = 280;
+    canvas.width = cssWidth * dpr;
+    canvas.height = cssHeight * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+    const padding = { top: 28, right: 16, bottom: 32, left: 56 };
+    const chartW = cssWidth - padding.left - padding.right;
+    const chartH = cssHeight - padding.top - padding.bottom;
+
+    const totals = data.map(d => Number(d.total) || 0);
+    const maxVal = Math.max(...totals, 1);
+    const niceMax = maxVal * 1.15;
+
+    // Gridlines + y-axis labels
+    ctx.strokeStyle = gridColor;
+    ctx.fillStyle = textColor;
+    ctx.font = '11px Arial, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    const gridLines = 4;
+    for (let i = 0; i <= gridLines; i++) {
+      const y = padding.top + chartH - (chartH * i) / gridLines;
+      ctx.beginPath();
+      ctx.moveTo(padding.left, y);
+      ctx.lineTo(padding.left + chartW, y);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      const val = (niceMax * i) / gridLines;
+      ctx.fillText('$' + val.toFixed(0), padding.left - 8, y);
+    }
+
+    const n = data.length;
+    const slotW = chartW / n;
+    const barW = Math.min(slotW * 0.5, 48);
+
+    // Bars
+    const points = [];
+    data.forEach((d, i) => {
+      const val = Number(d.total) || 0;
+      const barH = (val / niceMax) * chartH;
+      const cx = padding.left + slotW * i + slotW / 2;
+      const x = cx - barW / 2;
+      const y = padding.top + chartH - barH;
+      ctx.fillStyle = barColor;
+      ctx.fillRect(x, y, barW, barH);
+      points.push({ x: cx, y });
+
+      // Month labels
+      ctx.fillStyle = textColor;
+      ctx.font = '11px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(d.month, cx, padding.top + chartH + 10);
+    });
+
+    // Trend line connecting bar tops
+    ctx.save();
+    if (glow && glow !== 'none') ctx.filter = glow;
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    points.forEach((p, i) => {
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
+    ctx.stroke();
+    ctx.restore();
+
+    // Trend line points
+    points.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = pointColor;
+      ctx.fill();
+    });
+
+    // Total for the hovered point only
+    if (hoverIndex >= 0 && hoverIndex < data.length) {
+      const val = Number(data[hoverIndex].total) || 0;
+      const p = points[hoverIndex];
+      ctx.font = '600 11px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillStyle = textColor;
+      ctx.fillText('$' + val.toFixed(2), p.x, p.y - 8);
+    }
+
+    lastPoints = points;
+  }
+
+  function handleMove(evt) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = evt.clientX - rect.left;
+    const my = evt.clientY - rect.top;
+    let closest = -1;
+    let closestDist = Infinity;
+    lastPoints.forEach((p, i) => {
+      const dist = Math.hypot(p.x - mx, p.y - my);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closest = i;
+      }
+    });
+    const next = closestDist <= 10 ? closest : -1;
+    if (next !== hoverIndex) {
+      hoverIndex = next;
+      canvas.style.cursor = hoverIndex >= 0 ? 'pointer' : 'default';
+      draw();
+    }
+  }
+
+  function handleLeave() {
+    if (hoverIndex !== -1) {
+      hoverIndex = -1;
+      canvas.style.cursor = 'default';
+      draw();
+    }
+  }
+
+  canvas.addEventListener('mousemove', handleMove);
+  canvas.addEventListener('mouseleave', handleLeave);
+
+  draw();
+  window.addEventListener('resize', draw);
+})();
+</script>
+{% endblock %}
