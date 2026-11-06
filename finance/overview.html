@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Overview{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* Header: title on the left, small actions on the right */
+  .overview-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px 24px;
+    max-width: 1000px;
+    margin: 0 auto 24px;
+  }
+  .overview-header .page__header { margin: 0; }
+  .overview-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .overview-actions .btn { padding: 6px 12px; font-size: 13px; }
+
+  /* Three balances, centered, side by side */
+  .balances {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+    align-items: stretch;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  .balance { display: flex; flex-direction: column; gap: 6px; }
+  .balance__label { font-size: 16px; font-weight: 600; color: var(--type-primary); }
+  .balance__amt {
+    margin-top: auto;
+    padding-top: 16px;
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--type-primary);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+  .balance__amt.is-negative { color: var(--alert); }
+  .balance .tag { margin-left: 8px; vertical-align: middle; }
+
+  /* Overspend limit bar — full width rectangle beneath the balance boxes */
+  .overspend {
+    max-width: 1000px;
+    margin: 20px auto 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+  .overspend__info { display: flex; flex-direction: column; gap: 6px; }
+  .overspend__label { font-size: 16px; font-weight: 600; color: var(--type-primary); }
+  .overspend__figure {
+    margin: 0;
+    font-size: 25px;
+    font-weight: 700;
+    color: var(--type-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (max-width: 900px) {
+    .balances { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 480px) {
+    .balance__amt { font-size: 28px; }
+    .overspend { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="overview-header">
+  <div class="page__header">
+    <h1 class="page__title">Overview</h1>
+    <p class="page__description">Updates as requests are approved, reimbursed, and paid out.</p>
+  </div>
+  <div class="overview-actions">
+    <a class="btn btn--primary" href="{% url 'bal-set' organization_slug=current_org.slug %}">Reconciliation</a>
+    <a class="btn btn--primary" href="{% url 'bal-adjustment' organization_slug=current_org.slug %}">Deposits &amp; Corrections</a>
+    <a class="btn btn--primary" href="{% url 'request-list' organization_slug=current_org.slug %}">All requests</a>
+  </div>
+</div>
+
+<div class="balances">
+
+  <section class="card balance" aria-labelledby="true-title">
+    <h2 class="balance__label" id="true-title">True balance</h2>
+    <p class="balance__amt{% if true_balance < 0 %} is-negative{% endif %}">{% if true_balance < 0 %}-${{ true_balance|floatformat:2|cut:"-" }}{% else %}${{ true_balance|floatformat:2 }}{% endif %}</p>
+  </section>
+
+  <section class="card balance" aria-labelledby="committed-title">
+    <h2 class="balance__label" id="committed-title">Committed</h2>
+    <p class="balance__amt">${{ curr_approved|floatformat:2 }}</p>
+  </section>
+
+  <section class="card balance" aria-labelledby="working-title">
+    <h2 class="balance__label" id="working-title">Working balance{% if working_balance < 0 %}<span class="tag tag--alert">Overcommitted</span>{% endif %}</h2>
+    <p class="balance__amt{% if working_balance < 0 %} is-negative{% endif %}">{% if working_balance < 0 %}-${{ working_balance|floatformat:2|cut:"-" }}{% else %}${{ working_balance|floatformat:2 }}{% endif %}</p>
+  </section>
+
+</div>
+
+<section class="card overspend" aria-labelledby="overspend-title">
+  <div class="overspend__info">
+    <h2 class="overspend__label" id="overspend-title">Overspend limit</h2>
+    <p class="overspend__figure">${{ current_org.overspend_limit|floatformat:2 }}</p>
+  </div>
+  <a class="btn btn--secondary" href="{% url 'overspend-adjust' organization_slug=current_org.slug %}">Change the overspend limit</a>
+</section>
+{% endblock %}
+
