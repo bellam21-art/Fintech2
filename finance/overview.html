@@ -90,7 +90,7 @@
   <div class="overview-actions">
     <a class="btn btn--primary" href="{% url 'bal-set' organization_slug=current_org.slug %}">Reconciliation</a>
     <a class="btn btn--primary" href="{% url 'bal-adjustment' organization_slug=current_org.slug %}">Deposits &amp; Corrections</a>
-    <a class="btn btn--primary" href="{% url 'request-list' organization_slug=current_org.slug %}">All requests</a>
+    <a class="btn btn--primary" href="{% url 'request-list' organization_slug=current_org.slug %}">All Requests</a>
   </div>
 </div>
 
@@ -118,7 +118,7 @@
     <h2 class="overspend__label" id="overspend-title">Overspend limit</h2>
     <p class="overspend__figure">${{ current_org.overspend_limit|floatformat:2 }}</p>
   </div>
-  <a class="btn btn--secondary" href="{% url 'overspend-adjust' organization_slug=current_org.slug %}">Change the overspend limit</a>
+  <a class="btn btn--secondary" href="{% url 'overspend-adjust' organization_slug=current_org.slug %}">Set Limit</a>
 </section>
 
 <section class="card spend-chart" aria-labelledby="spend-chart-title">
